@@ -20,6 +20,7 @@ import {
 } from "./hooks";
 // import Hints from "./Hints";
 import { ExampleUI, Hints, Subgraph } from "./views";
+import { SafeFarmer } from "./views/SafeFarmer";
 
 const { ethers } = require("ethers");
 /*
@@ -319,6 +320,16 @@ function App(props) {
       {networkDisplay}
       <BrowserRouter>
         <Menu style={{ textAlign: "center" }} selectedKeys={[route]} mode="horizontal">
+          <Menu.Item key="/farmer">
+            <Link
+                onClick={() => {
+                  setRoute("/farmer");
+                }}
+                to="/farmer"
+            >
+              Safe CDP Farmer
+            </Link>
+          </Menu.Item>
           <Menu.Item key="/">
             <Link
               onClick={() => {
@@ -372,6 +383,9 @@ function App(props) {
         </Menu>
 
         <Switch>
+          <Route exact path="/farmer">
+            <SafeFarmer />
+          </Route>
           <Route exact path="/">
             {/*
                 🎛 this scaffolding is full of commonly used components
