@@ -12,7 +12,7 @@ export function SafeFarmer() {
                     <Typography level={3}>SafeCDPFarmer</Typography>
                 </Row>
                 <Row gutter={4}>
-                    <Typography strong>Target Health Factor:</Typography>
+                    <Typography strong>Target Health Factor: 1.8</Typography>
                 </Row>
                 <Row gutter={4}>
                     <Button>Deposit</Button>

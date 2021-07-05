@@ -1,4 +1,5 @@
-import { Card } from "antd";
+import { ethers } from 'ethers';
+import {Card, Input} from "antd";
 import React, { useMemo, useState } from "react";
 import { useContractExistsAtAddress, useContractLoader } from "../../hooks";
 import Account from "../Account";
@@ -55,6 +56,7 @@ export default function Contract({
   blockExplorer,
   chainId,
 }) {
+  const [value, setValue] = React.useState("0");
   const contracts = useContractLoader(provider, { chainId });
   let contract;
   if (!customContract) {
@@ -130,6 +132,15 @@ export default function Contract({
         style={{ marginTop: 25, width: "100%" }}
         loading={contractDisplay && contractDisplay.length <= 0}
       >
+        <div>
+          <Input
+            value={value}
+            onChange={e => setValue(e.target.value)}
+          />
+          <div>
+            {JSON.stringify(ethers.BigNumber.from(ethers.utils.formatBytes32String(value)))}
+          </div>
+        </div>
         {contractIsDeployed ? contractDisplay : noContractDisplay}
       </Card>
     </div>

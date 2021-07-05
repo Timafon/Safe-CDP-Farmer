@@ -23,9 +23,29 @@ abstract contract IERC20 {
     //function allowance(address tokenOwner, address spender) public view returns (uint remaining);
     //function transfer(address to, uint tokens) public returns (bool success);
     function approve(address spender, uint tokens) public virtual returns (bool success);
-    //function transferFrom(address from, address to, uint tokens) public returns (bool success);
+    function transferFrom(address from, address to, uint tokens) public virtual returns (bool success);
     //event Transfer(address indexed from, address indexed to, uint tokens);
     //event Approval(address indexed tokenOwner, address indexed spender, uint tokens);
+}
+
+// #example of transaction https://polygonscan.com/tx/0xffb56160b4555c7949f1f94242f9236d4d348fde2fd276f72106d42e4553a80c#eventlog
+// #code of AddLiquidity https://polygonscan.com/address/0x445fe580ef8d70ff569ab36e80c647af338db351#code
+// event AddLiquidity:
+// provider: indexed(address)
+// token_amounts: uint256[N_COINS]
+// fees: uint256[N_COINS]
+// invariant: uint256
+// token_supply: uint256
+abstract contract CurveAavePoolInterface {
+  function add_liquidity(uint256[3] memory _amounts, uint256 _min_mint_amount, bool _use_underlying) public virtual returns
+(uint256);
+  function AddLiquidity(
+    address provider,
+    uint256[3] memory _token_amounts,
+    uint256[3] memory fees,
+    uint256 invariant,
+    uint256 token_supply
+  ) public virtual returns (uint256);
 }
 
 contract YourContract {
@@ -34,10 +54,11 @@ contract YourContract {
 
   mapping (address => uint256) balanceOf;
 
-  address aaveLendingPoolAddress = 0x8dFf5E27EA6b7AC08EbFdf9eB090F32ee9a30fcf;//matic mainnet
+  address aaveLendingPoolAddress = 0x8dFf5E27EA6b7AC08EbFdf9eB090F32ee9a30fcf; //matic mainnet
   AaveLendingPoolInterface aaveLendingPoolContract = AaveLendingPoolInterface(aaveLendingPoolAddress);
 
   address wMatic = 0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270;
+  address USDT = 0xc2132D05D31c914a87C6611C10748AEb04B58e8F;
 
   constructor() {
     // what should we do on deploy?
@@ -71,10 +92,23 @@ contract YourContract {
   */
 
 
-
-
+  function sendUSDT(address _from, address _to, uint256 _tokens) external {
+    // This is the mainnet USDT contract address
+    // Using on other networks (rinkeby, local, ...) would fail
+    //  - there's no contract on this address on other networks
+    // transfers USDT that belong to your contract to the specified address
+    IERC20(address(USDT)).transferFrom(_from, _to, _tokens);
+  }
 
   function depositAndStakeInGauge() public payable {
+    console.log(msg.sender, "depositAndStakeInGauge()", msg.value);
+    require(balanceOf[msg.sender] == 0, "Already deposited");
+    balanceOf[msg.sender] += msg.value;
+
+    //emit SetPurpose(msg.sender, purpose);
+  }
+
+  function depositAndStakeInGaugeUSDT() public payable {
     console.log(msg.sender, "depositAndStakeInGauge()", msg.value);
     require(balanceOf[msg.sender] == 0, "Already deposited");
     balanceOf[msg.sender] += msg.value;
@@ -91,7 +125,9 @@ contract YourContract {
 
     //IERC20(apeAsset).approve(ADDRESSES_PROVIDER.getLendingPool(), outputAmount);
     //IERC20(wMatic).approve(address(this), balanceOf[_address]);
-    IERC20(wMatic).approve(aaveLendingPoolAddress, balanceOf[_address]);
+    bool suc = IERC20(wMatic).approve(aaveLendingPoolAddress, balanceOf[_address]);
+
+    require(suc == false, "suc");
 
     aaveLendingPoolContract.deposit(wMatic, balanceOf[_address], address(this), 0);
   }
@@ -176,5 +212,14 @@ contract YourContract {
   function getAvailableBorrowsETH(address _someAddress) public view returns (uint256) {
     ( ,,uint256 availableBorrowsETH,,,) = getUserAccountData(_someAddress);
     return availableBorrowsETH;
+  }
+
+  // ---------------- CURVE ---------------------
+  address curveAavePoolAddress = 0x445FE580eF8d70FF569aB36e80c647af338db351;
+  CurveAavePoolInterface curveAavePoolContract = CurveAavePoolInterface(curveAavePoolAddress);
+
+  function depositFromVaultToCurveAavePool(address _address, uint256 _usdtCount) public {
+    IERC20(USDT).approve(curveAavePoolAddress, balanceOf[_address]);
+    curveAavePoolContract.add_liquidity([uint(0), uint(0), uint(_usdtCount * 1000000)], 0, false);
   }
 }
