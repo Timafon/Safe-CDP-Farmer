@@ -19,6 +19,8 @@ import { useUserAddress } from "eth-hooks";
 import { formatUnits } from "ethers/lib/utils";
 
 const TARGET_HF = 1.8;
+// https://docs.aave.com/risk/asset-risk/polygon-market#risk-parameters
+const MATIC_LT = 0.65; // Liquidation Threshold for Matic on Polygon 65%
 
 const SafeCDPFarmerAddress = "0x5c1fD33A842F05c0F4f702928fA1ED4A8bd05020";
 const AaveAddress = "0x8dFf5E27EA6b7AC08EbFdf9eB090F32ee9a30fcf";
@@ -511,7 +513,7 @@ const AaveProxyABI = [
     type: "function",
   },
 ];
-
+// TODO повесить прослушку Event чтобы обновлять фронт
 export function SafeFarmer({ address, signer }) {
   // console.log("[MYLOGS] signer: ", signer);
   const [deposit, setDeposit] = React.useState("");
@@ -562,53 +564,124 @@ export function SafeFarmer({ address, signer }) {
     // }
   }, [aaveProxyContract, signer, address]);
   // const SafeCDPFarmerContract = React.useMemo(() => new ethers.Contract(), [signer]);
-  const rebalance = () => {
-    const currentHF = ethers.utils.formatUnits(userAave.healthFactor);
-    const collateralMatic = ethers.utils.formatUnits(userAave[0]); // брать только для матика!!!
-    // предполагаю что userAave[0], но мб и totalCollateralETH (хотя это вся collateral)
-    // const operatingMoney =
+  const rebalance = React.useMemo(() => {
+    if (userAave) {
+      const currentHF = ethers.utils.formatUnits(userAave.healthFactor);
 
-    // if (currentHF < TARGET_HF - 0.05) {
-    //
-    // } else if (currentHF > TARGET_HF + 0.05) {
-    //
-    // }
-    // get aave HF
-    // if (curHF != targetHF +- 0.05)
-    // if (current HF < target HF) withdrawCurve and repayAave
-    // else borrowAave and depositCurve
-    // x = (Coll x 0.65)/tarHf - curHf)
-    // Liq Trash for Matic = 0.65
-  };
+      if (currentHF < TARGET_HF - 0.5 || currentHF > TARGET_HF + 0.5) {
+        const totalCollateral = ethers.utils.formatUnits(userAave.totalCollateralETH);
+        const liquidationThreshold = userAave.currentLiquidationThreshold;
+        const totalBorrow = userAave.totalCollateralETH;
+        const totalDebtETH = ethers.utils.formatUnits(userAave.totalDebtETH);
+        // const dyiHF = (totalCollateral * liquidationThreshold * 0.0001) / totalBorrow;
+        // const newHF = (totalCollateral * MATIC_LT) / totalBorrow;
+        // const newTargetHF = totalCollateral * liquidationThreshold * 0.0001 * TARGET_HF - totalBorrow;
+        // console.log("newHF: ", newHF);
+        // console.log("newTargetHF: ", newTargetHF);
+        // const collateralMatic = ethers.utils.formatUnits(userAave[0]); // брать только для матика!!!
+        // предполагаю что userAave[0], но мб и totalCollateralETH (хотя это вся collateral)
+        // const operatingMoney =
+        console.log("logs totalCollateral: ", totalCollateral);
+        console.log("logs MATIC_LT: ", MATIC_LT);
+        console.log("logs TARGET_HF: ", TARGET_HF);
+        console.log("logs totalDebtETH: ", totalDebtETH);
+        const targetBorrowAmount = (totalCollateral * MATIC_LT) / TARGET_HF - totalDebtETH;
+        console.log("logs targetBorrowAmount: ", targetBorrowAmount);
+
+        return {
+          // newHF,
+          rise: true,
+          targetBorrowAmount,
+          currentHF,
+          // newTargetHF,
+        };
+      }
+      return {
+        // newHF: `${userAave.healthFactor} in range [1.75, 1.85]`,
+      };
+    }
+  }, [userAave]);
 
   return (
     <Row justify="center">
       <Col>
+        <Divider />
+
         <Row gutter={4}>
           <Typography level={3}>SafeCDPFarmer</Typography>
         </Row>
         <Row gutter={4}>
           <Typography strong>User Address: {address}</Typography>
         </Row>
+
+        <Divider />
+
         <Row gutter={4}>
           <Typography strong>
-            Collateral totalCollateralETH:{" "}
-            {userAave ? ethers.utils.formatUnits(userAave.totalCollateralETH) : "loading..."}
+            totalCollateralETH: {userAave ? ethers.utils.formatUnits(userAave.totalCollateralETH) : "loading..."}
+            <i> total collateral in ETH of the user</i>
           </Typography>
         </Row>
         <Row gutter={4}>
           <Typography strong>
-            Collateral totalDebtETH: {userAave ? ethers.utils.formatUnits(userAave.totalDebtETH) : "loading..."}
+            totalDebtETH: {userAave ? ethers.utils.formatUnits(userAave.totalDebtETH) : "loading..."}
+            <i> total debt in ETH of the user</i>
           </Typography>
         </Row>
         <Row gutter={4}>
           <Typography strong>
-            Current Health Factor: {userAave ? ethers.utils.formatUnits(userAave.healthFactor) : "loading..."}
+            availableBorrowsETH: {userAave ? ethers.utils.formatUnits(userAave.availableBorrowsETH) : "loading..."}
+            <i> borrowing power left of the user</i>
           </Typography>
         </Row>
+        <Row gutter={4}>
+          <Typography strong>
+            currentLiquidationThreshold:{" "}
+            {userAave ? ethers.utils.formatUnits(userAave.currentLiquidationThreshold) : "loading..."}
+            <i> liquidation threshold of the user</i>
+          </Typography>
+        </Row>
+        <Row gutter={4}>
+          <Typography strong>
+            ltv: {userAave ? ethers.utils.formatUnits(userAave.ltv) : "loading..."}
+            <i> Loan To Value of the user</i>
+          </Typography>
+        </Row>
+        <Row gutter={4}>
+          <Typography strong>
+            healthFactor: {userAave ? ethers.utils.formatUnits(userAave.healthFactor) : "loading..."}
+            <i> current health factor of the user. Also see liquidationCall()</i>
+          </Typography>
+        </Row>
+
+        <Divider />
+
         <Row gutter={4}>
           <Typography strong>Target Health Factor: 1.8</Typography>
         </Row>
+        <Row gutter={4}>
+          <Typography strong>Current Health Factor: {userAave ? rebalance.currentHF : "loading..."}</Typography>
+        </Row>
+
+        {/* <Row gutter={4}>
+          <Typography strong>newHF: {userAave ? rebalance.newHF : "loading..."}</Typography>
+        </Row> */}
+
+        <Row gutter={4}>
+          <Typography strong>
+            {userAave && rebalance.rise
+              ? "Need to borrow money from Aave and deposit on Curve: "
+              : "Need withdraw money from Curve and repay on Aave: "}
+            {userAave ? rebalance.targetBorrowAmount : "loading..."}
+          </Typography>
+        </Row>
+
+        {/* <Row gutter={4}>
+          <Typography strong>newTargetHF: {userAave ? rebalance.newTargetHF : "loading..."}</Typography>
+        </Row> */}
+
+        <Divider />
+
         {/* <Row gutter={4}>
           <Button>Deposit</Button>
           <Input value={deposit} onChange={e => setDeposit(e.target.value)} />
