@@ -1,3 +1,9 @@
+# Notes
+## Formatting (uint256, BigNumbers, ...)
+
+https://docs.ethers.io/v5/api/utils/display-logic/#utils-parseUnits
+
+
 # 🏗 scaffold-eth
 
 > is everything you need to get started building decentralized applications on Ethereum! 🚀

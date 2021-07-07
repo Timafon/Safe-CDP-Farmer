@@ -322,10 +322,10 @@ function App(props) {
         <Menu style={{ textAlign: "center" }} selectedKeys={[route]} mode="horizontal">
           <Menu.Item key="/farmer">
             <Link
-                onClick={() => {
-                  setRoute("/farmer");
-                }}
-                to="/farmer"
+              onClick={() => {
+                setRoute("/farmer");
+              }}
+              to="/farmer"
             >
               Safe CDP Farmer
             </Link>
@@ -384,7 +384,7 @@ function App(props) {
 
         <Switch>
           <Route exact path="/farmer">
-            <SafeFarmer />
+            <SafeFarmer address={address} signer={userSigner} />
           </Route>
           <Route exact path="/">
             {/*
