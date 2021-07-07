@@ -1,27 +1,15 @@
 import React from "react";
 import { ethers } from "ethers";
-import {
-  Button,
-  Row,
-  Col,
-  Typography,
-  Card,
-  DatePicker,
-  Divider,
-  Input,
-  List,
-  Progress,
-  Slider,
-  Spin,
-  Switch,
-} from "antd";
-import { useUserAddress } from "eth-hooks";
-import { formatUnits } from "ethers/lib/utils";
+import { Button, Row, Col, Typography, Divider } from "antd";
 
 const TARGET_HF = 1.8;
 // https://docs.aave.com/risk/asset-risk/polygon-market#risk-parameters
 const MATIC_LT = 0.65; // Liquidation Threshold for Matic on Polygon 65%
 
+const wMaticAddress = "0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270";
+const USDTAddress = "0xc2132D05D31c914a87C6611C10748AEb04B58e8F"; // aToken
+const sUSDTAddress = "0xe590cfca10e81FeD9B0e4496381f02256f5d2f61"; // stable debt
+const vUSDTAddress = "0x8038857FD47108A07d1f6Bf652ef1cBeC279A2f3"; // variable debt
 const SafeCDPFarmerAddress = "0x5c1fD33A842F05c0F4f702928fA1ED4A8bd05020";
 const AaveAddress = "0x8dFf5E27EA6b7AC08EbFdf9eB090F32ee9a30fcf";
 const AaveABI = [
@@ -515,92 +503,74 @@ const AaveProxyABI = [
 ];
 // TODO повесить прослушку Event чтобы обновлять фронт
 export function SafeFarmer({ address, signer }) {
-  // console.log("[MYLOGS] signer: ", signer);
-  const [deposit, setDeposit] = React.useState("");
   const [userAave, setUserAave] = React.useState();
-  // const userAddress = useUserAddress(signer);
-  // console.log("[MYLOGS] userAddress: ", userAddress);
-  // console.log("[MYLOGS] address: ", address);
-  const aaveContract = React.useMemo(() => {
-    return new ethers.Contract(AaveAddress, AaveABI, signer);
-  }, [signer]);
-  // console.log("[MYLOGS] aaveContract: ", aaveContract);
   const aaveProxyContract = React.useMemo(() => {
     return new ethers.Contract(AaveAddress, AaveProxyABI, signer);
   }, [signer]);
-  // console.log("[MYLOGS] aaveProxyContract: ", aaveProxyContract);
   React.useEffect(() => {
     async function getUserAccountData() {
       console.log("[MYLOGS] address: ", address);
-      // хуй знает откуда берется этот адрес...
+      // хуй знает откуда берется этот адрес... (разобраться в scaffold-eth)
       if (address !== "0xAF786303cf83E3C1b3df965817b64768D6ed4D31") {
-        const res = await aaveProxyContract.getUserAccountData(address);
-        // const res = await aaveProxyContract.getUserAccountData("0x4b7E32A9f6e98dA4d3194199f5a18D960C12CE63");
-        setUserAave(res);
-        console.log("[MYLOGS] userAave: ", res);
-
-        // предполагаю что в userAave.0, userAave.1 и т.д. это deposit бабки
-        // 0 MATIC
-        // 1 USDT
-        // 2 WETH
-        // 3 USDC
-        // 4 DAI
-        // 5 WBTC
-
-        const reservesList = await aaveProxyContract.getReservesList();
-        console.log("reservesList: ", reservesList);
+        try {
+          const res = await aaveProxyContract.getUserAccountData(address);
+          console.log("aaveProxyContract.getUserAccountData(address): ", JSON.stringify(res));
+          setUserAave(res);
+        } catch (err) {
+          console.error(`aaveProxyContract.getUserAccountData(address): ${err}`);
+        }
       }
     }
     if (aaveProxyContract && signer && address) {
       getUserAccountData();
     }
-    //
-    // console.log("aaveContract: ", aaveContract);
-    // console.log("aaveProxyContract: ", aaveProxyContract);
-    // if (aaveProxyContract) {
-    //   const _userAave = await aaveProxyContract.getUserAccountData(signer);
-    //   setUserAave(_userAave);
-    //   console.log("userAave: ", _userAave);
-    // }
   }, [aaveProxyContract, signer, address]);
-  // const SafeCDPFarmerContract = React.useMemo(() => new ethers.Contract(), [signer]);
-  const rebalance = React.useMemo(() => {
+  const rebalanceModule = React.useMemo(() => {
+    async function rebalance(targetBorrowAmount) {
+      // https://docs.aave.com/developers/the-core-protocol/lendingpool#borrow
+      // function borrow(address asset, uint256 amount, uint256 interestRateMode, uint16 referralCode, address onBehalfOf)
+      const asset = wMaticAddress; // [address] address of the underlying asset
+      const amount = targetBorrowAmount; // [uint256]
+      // amount to be borrowed, expressed in wei
+      // units
+      const interestRateMode = ethers.BigNumber.from(2); // [uint256] the type of borrow debt. Stable: 1, Variable: 2
+      const referralCode = 0; // [uint16] referral code for our referral program. Use 0 for
+      // no referral code.
+      const onBehalfOf = address; // [address] address of user who will incur the debt
+      // debugger;
+      try {
+        const res = await aaveProxyContract.borrow(asset, amount, interestRateMode, referralCode, onBehalfOf);
+        console.log("logs rebalance res: ", res);
+      } catch (err) {
+        console.log("logs rebalance err: ", err);
+      }
+    }
+
     if (userAave) {
       const currentHF = ethers.utils.formatUnits(userAave.healthFactor);
+      const isRange = currentHF >= TARGET_HF - 0.5 && currentHF <= TARGET_HF + 0.5;
 
-      if (currentHF < TARGET_HF - 0.5 || currentHF > TARGET_HF + 0.5) {
-        const totalCollateral = ethers.utils.formatUnits(userAave.totalCollateralETH);
-        const liquidationThreshold = userAave.currentLiquidationThreshold;
-        const totalBorrow = userAave.totalCollateralETH;
-        const totalDebtETH = ethers.utils.formatUnits(userAave.totalDebtETH);
-        // const dyiHF = (totalCollateral * liquidationThreshold * 0.0001) / totalBorrow;
-        // const newHF = (totalCollateral * MATIC_LT) / totalBorrow;
-        // const newTargetHF = totalCollateral * liquidationThreshold * 0.0001 * TARGET_HF - totalBorrow;
-        // console.log("newHF: ", newHF);
-        // console.log("newTargetHF: ", newTargetHF);
-        // const collateralMatic = ethers.utils.formatUnits(userAave[0]); // брать только для матика!!!
-        // предполагаю что userAave[0], но мб и totalCollateralETH (хотя это вся collateral)
-        // const operatingMoney =
-        console.log("logs totalCollateral: ", totalCollateral);
-        console.log("logs MATIC_LT: ", MATIC_LT);
-        console.log("logs TARGET_HF: ", TARGET_HF);
-        console.log("logs totalDebtETH: ", totalDebtETH);
-        const targetBorrowAmount = (totalCollateral * MATIC_LT) / TARGET_HF - totalDebtETH;
-        console.log("logs targetBorrowAmount: ", targetBorrowAmount);
-
+      if (isRange)
         return {
-          // newHF,
-          rise: true,
-          targetBorrowAmount,
-          currentHF,
-          // newTargetHF,
+          rebalance: () => {},
+          rise: null,
+          targetBorrowAmount: "nothing to do",
+          currentHF: `${currentHF} in range [1.75, 1.85]`,
         };
-      }
+
+      const totalCollateral = userAave.totalCollateralETH;
+      const totalDebtETH = userAave.totalDebtETH;
+      const targetBorrowAmount = Math.ceil((totalCollateral * MATIC_LT) / TARGET_HF - totalDebtETH);
+      const isRise = currentHF > TARGET_HF + 0.5;
+
       return {
-        // newHF: `${userAave.healthFactor} in range [1.75, 1.85]`,
+        rebalance,
+        rise: isRise,
+        targetBorrowAmount,
+        currentHF,
       };
     }
-  }, [userAave]);
+  }, [userAave, address]);
 
   return (
     <Row justify="center">
@@ -660,38 +630,25 @@ export function SafeFarmer({ address, signer }) {
           <Typography strong>Target Health Factor: 1.8</Typography>
         </Row>
         <Row gutter={4}>
-          <Typography strong>Current Health Factor: {userAave ? rebalance.currentHF : "loading..."}</Typography>
+          <Typography strong>Current Health Factor: {userAave ? rebalanceModule.currentHF : "loading..."}</Typography>
         </Row>
-
-        {/* <Row gutter={4}>
-          <Typography strong>newHF: {userAave ? rebalance.newHF : "loading..."}</Typography>
-        </Row> */}
 
         <Row gutter={4}>
           <Typography strong>
-            {userAave && rebalance.rise
-              ? "Need to borrow money from Aave and deposit on Curve: "
-              : "Need withdraw money from Curve and repay on Aave: "}
-            {userAave ? rebalance.targetBorrowAmount : "loading..."}
+            {userAave && rebalanceModule.rise
+              ? "Need to borrow money on Aave and deposit on Curve: "
+              : "Need withdraw money on Curve and repay on Aave: "}
+            {userAave ? ethers.utils.formatUnits(rebalanceModule.targetBorrowAmount) : "loading..."}
           </Typography>
         </Row>
 
-        {/* <Row gutter={4}>
-          <Typography strong>newTargetHF: {userAave ? rebalance.newTargetHF : "loading..."}</Typography>
-        </Row> */}
-
         <Divider />
 
-        {/* <Row gutter={4}>
-          <Button>Deposit</Button>
-          <Input value={deposit} onChange={e => setDeposit(e.target.value)} />
-        </Row>
-        <Row gutter={4}>
-          <Button>Withdraw</Button>
-        </Row> */}
-        <Row gutter={4}>
-          <Button>Rebalance</Button>
-        </Row>
+        {userAave && (
+          <Row gutter={4}>
+            <Button onClick={() => rebalanceModule.rebalance(rebalanceModule.targetBorrowAmount)}>Rebalance</Button>
+          </Row>
+        )}
       </Col>
     </Row>
   );
