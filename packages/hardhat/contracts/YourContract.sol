@@ -15,17 +15,23 @@ abstract contract AaveLendingPoolInterface {
     uint256 healthFactor
   );
   function deposit(address asset, uint256 amount, address onBehalfOf, uint16 referralCode) public virtual;
+  function withdraw(address asset, uint256 amount, address to) public virtual;
 }
 
 abstract contract IERC20 {
     //function totalSupply() public view returns (uint);
-    //function balanceOf(address tokenOwner) public view returns (uint balance);
-    //function allowance(address tokenOwner, address spender) public view returns (uint remaining);
+    function balanceOf(address tokenOwner) public virtual view returns (uint balance);
+    function allowance(address tokenOwner, address spender) public virtual view returns (uint remaining);
     //function transfer(address to, uint tokens) public returns (bool success);
     function approve(address spender, uint tokens) public virtual returns (bool success);
     function transferFrom(address from, address to, uint tokens) public virtual returns (bool success);
     //event Transfer(address indexed from, address indexed to, uint tokens);
     //event Approval(address indexed tokenOwner, address indexed spender, uint tokens);
+}
+
+abstract contract ETHGateway {
+    function depositETH(address lendingPool, address onBehalfOf, uint16 referralCode) public virtual payable;
+    function withdrawETH(address lendingPool, uint256 amount, address to) public virtual payable;
 }
 
 // #example of transaction https://polygonscan.com/tx/0xffb56160b4555c7949f1f94242f9236d4d348fde2fd276f72106d42e4553a80c#eventlog
@@ -58,40 +64,14 @@ contract YourContract {
   AaveLendingPoolInterface aaveLendingPoolContract = AaveLendingPoolInterface(aaveLendingPoolAddress);
 
   address wMatic = 0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270;
+  address aToken = 0x8dF3aad3a84da6b69A4DA8aeC3eA40d9091B2Ac4;
+  address ethGateway = 0xbEadf48d62aCC944a06EEaE0A9054A90E5A7dc97;
   address USDT = 0xc2132D05D31c914a87C6611C10748AEb04B58e8F;
 
   constructor() {
     // what should we do on deploy?
   }
-
-
-
-
-
-
-  /*function testView() public view returns (address) {
-    console.log(msg.sender, "testView()", "");
-    return msg.sender;
-  }*/
-
-  /*function testView(address _address) public returns (address) {
-    console.log(msg.sender, "testNotView()", "");
-    return msg.sender;
-  }
-
-  function testPayable() public payable returns (address) {
-    console.log(msg.sender, "testPayable()", msg.value);
-    return msg.sender;
-  }
   
-  function testPure(uint256 _number) public pure returns (uint256) {
-    uint256 myHL = _number;
-    return myHL * 2;
-  }
-
-  */
-
-
   function sendUSDT(address _from, address _to, uint256 _tokens) external {
     // This is the mainnet USDT contract address
     // Using on other networks (rinkeby, local, ...) would fail
@@ -100,8 +80,8 @@ contract YourContract {
     IERC20(address(USDT)).transferFrom(_from, _to, _tokens);
   }
 
-  function depositAndStakeInGauge() public payable {
-    console.log(msg.sender, "depositAndStakeInGauge()", msg.value);
+  function depositToVault() public payable {
+    console.log(msg.sender, "depositToVault()", msg.value);
     require(balanceOf[msg.sender] == 0, "Already deposited");
     balanceOf[msg.sender] += msg.value;
 
@@ -109,7 +89,7 @@ contract YourContract {
   }
 
   function depositAndStakeInGaugeUSDT() public payable {
-    console.log(msg.sender, "depositAndStakeInGauge()", msg.value);
+    console.log(msg.sender, "depositAndStakeInGaugeUSDT()", msg.value);
     require(balanceOf[msg.sender] == 0, "Already deposited");
     balanceOf[msg.sender] += msg.value;
 
@@ -121,15 +101,47 @@ contract YourContract {
     aaveLendingPoolContract.deposit(wMatic, balanceOf[msg.sender], msg.sender, 0);
   }*/
   function depositFromVaultToAave(address _address) public {
-    require(balanceOf[_address] > 0, "No funds deposited");
+    //require(balanceOf[_address] > 0, "No funds deposited");
+    ETHGateway(ethGateway).depositETH{value:balanceOf[_address]}(aaveLendingPoolAddress, _address, 0);
+  }
 
-    //IERC20(apeAsset).approve(ADDRESSES_PROVIDER.getLendingPool(), outputAmount);
-    //IERC20(wMatic).approve(address(this), balanceOf[_address]);
-    bool suc = IERC20(wMatic).approve(aaveLendingPoolAddress, balanceOf[_address]);
+  function withdrawFromAave(address _address) public {
+    //IERC20(aToken).allowance(_address, address(this));
+    //IERC20(aToken).allowance(aaveLendingPoolAddress, address(this));
+    IERC20(wMatic).approve(aaveLendingPoolAddress, type(uint).max);
 
-    require(suc == false, "suc");
+    ETHGateway(ethGateway).withdrawETH(aaveLendingPoolAddress, type(uint).max, _address);
+  }
+  
+  //onlyOwner
+  //move to constructor
+  function approve(address _tokenAddress, address _address) public returns (bool) {
+    //IERC20(aToken).approve(address(this), type(uint).max);
+    //IERC20(aToken).approve(aaveLendingPoolAddress, type(uint).max);
 
-    aaveLendingPoolContract.deposit(wMatic, balanceOf[_address], address(this), 0);
+    return IERC20(_tokenAddress).approve(_address, type(uint).max);
+  }
+
+  function approve() public returns (bool) {
+    return IERC20(aToken).approve(aaveLendingPoolAddress, type(uint).max);
+  }
+  
+  function withdrawFromAaveToValut() public {
+    ETHGateway(ethGateway).withdrawETH(aaveLendingPoolAddress, type(uint).max, address(this));
+  }
+
+  function withdrawATokenFromAave() public {
+    aaveLendingPoolContract.withdraw(aToken, type(uint).max, msg.sender);
+  }
+
+  function getATokenBalanceOf(address _tokenAddress, address _ownerAddress) public view returns (uint) {
+    IERC20 iaToken = IERC20(_tokenAddress);
+    return iaToken.balanceOf(_ownerAddress);
+  }
+
+  function getATokenAllowanceOf(address _tokenAddress, address _address1, address _address2) public view returns (uint) {
+    IERC20 iaToken = IERC20(_tokenAddress);
+    return iaToken.allowance(_address1, _address2);
   }
  
   /*function getMyDeposit() public view returns (uint256) {
@@ -199,8 +211,7 @@ contract YourContract {
   //}
 
   function getHL(address _someAddress) public view returns (uint256) {
-    uint256 myHL = 666;
-    (,,,,,myHL) = aaveLendingPoolContract.getUserAccountData(_someAddress);
+    (,,,,,uint256 myHL) = aaveLendingPoolContract.getUserAccountData(_someAddress);
     return myHL;
   }
 
@@ -209,9 +220,19 @@ contract YourContract {
     return totalCollateralETH;
   }
 
+  function getCurrentLiquidationThreshold(address _someAddress) public view returns (uint256) {
+    (,,,uint256 currentLiquidationThreshold,,) = getUserAccountData(_someAddress);
+    return currentLiquidationThreshold;
+  }
+
   function getAvailableBorrowsETH(address _someAddress) public view returns (uint256) {
-    ( ,,uint256 availableBorrowsETH,,,) = getUserAccountData(_someAddress);
+    (,,uint256 availableBorrowsETH,,,) = getUserAccountData(_someAddress);
     return availableBorrowsETH;
+  }
+
+  function getTotalDebtETH(address _someAddress) public view returns (uint256) {
+    (,uint256 totalDebtETH,,,,) = getUserAccountData(_someAddress);
+    return totalDebtETH;
   }
 
   // ---------------- CURVE ---------------------
