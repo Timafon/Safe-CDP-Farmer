@@ -20,7 +20,7 @@ import {
 } from "./hooks";
 // import Hints from "./Hints";
 import { ExampleUI, Hints, Subgraph } from "./views";
-import { SafeFarmer } from "./views/SafeFarmer";
+import { SafeFarmer } from "./views/SafeFarmer/SafeFarmer";
 
 const { ethers } = require("ethers");
 /*
