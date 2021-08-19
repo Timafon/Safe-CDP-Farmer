@@ -1,7 +1,6 @@
 import React from "react";
 import { ethers } from "ethers";
 import { Button, Row, Col, Typography, Divider } from "antd";
-import { ConvertingForm } from "./ConvertingForm";
 import {
   AaveAddress,
   AaveProxyABI,
@@ -53,10 +52,6 @@ export function SafeFarmer({ address, signer }) {
   const am3CrvContract = React.useMemo(() => {
     return new ethers.Contract(am3CrvContractAddress, am3CrvContractAbi, signer);
   });
-  // const ProtocolDataProviderContract = React.useMemo(() => {
-  //   return new ethers.Contract(ProtocolDataProviderAddress, ProtocolDataProviderABI, signer);
-  // }, [signer]);
-  // console.log("logs aaveOracleContract: ", aaveOracleContract);
   React.useEffect(() => {
     async function getUserAccountData() {
       console.log("[MYLOGS] address: ", address);
@@ -118,20 +113,13 @@ export function SafeFarmer({ address, signer }) {
           try {
             // !!!!! Step 1: borrow money !!!!!
             // https://docs.aave.com/developers/the-core-protocol/lendingpool#borrow
-            // const allTokens = await ProtocolDataProviderContract.getAllReservesTokens();
-            // в комментах примеры транзакции которую я сделал с Aave
-            // https://polygonscan.com/tx/0xd3692972d480a60aa4e321d852ebbcce8de498f978138ee204e6cc7a4896dbbc
+            // Example Borrow: 0xd3692972d480a60aa4e321d852ebbcce8de498f978138ee204e6cc7a4896dbbc
             const txBorrow = await aaveProxyContract.borrow(asset, amount, rateMode, referralCode, onBehalfOf);
             const receipt1 = await txBorrow.wait();
             console.log("logs receipt1: ", receipt1);
             if (!receipt1) return;
 
             // !!!!! Step 2: deposits coins into to the pool and mints new LP tokens !!!!!
-            // Example deposit 10 USDT
-            // Add_liquidity: 0x1745e4e14970cff6b84c240a5aa8258bbe7e6c58c5237c44cd318861054c72ec
-            // Approve am3CRV spend limit: 0xb104512d92e089868522495bb151aab0483bd32b6d4db8477208d145ae5628ba
-            // Deposit: 0xedce5ab556e3c8d0c934789f27db337720ec3fd4a2d2e066bebb363ac25416fa
-            // закидываем бабки в Curve
             const amounts = [ethers.BigNumber.from(0), ethers.BigNumber.from(0), amount];
             const cta = await curveContract.calc_token_amount(amounts, true);
             const minMintAmount = cta.mul(99).div(100); // ethers.BigNumber.from(Math.floor(amount.toNumber() * 0.99));
@@ -140,6 +128,7 @@ export function SafeFarmer({ address, signer }) {
             // Returns the amount of LP tokens that were minted in the deposit.
             // BUT FUCKING ETHERS DOESN'T RETURN RESPONSE OF TRANSACTION
             // mb trying events
+            // Example Add_liquidity: 0x1745e4e14970cff6b84c240a5aa8258bbe7e6c58c5237c44cd318861054c72ec
             const txAddLiq = await curveContract["add_liquidity(uint256[3],uint256,bool)"](
               amounts,
               minMintAmount,
@@ -149,6 +138,7 @@ export function SafeFarmer({ address, signer }) {
             console.log("receipt2: ", receipt2);
 
             // !!!!! Step 3.1: approve for am3CRV spending 2**256-1 // Number.MAX_SAFE_INTEGER 9007199254740991 !!!!!
+            // Example Approve am3CRV spend limit: 0xb104512d92e089868522495bb151aab0483bd32b6d4db8477208d145ae5628ba
             const txApprove = await am3CrvContract.approve(address, "0xffffffffffffffffffffff");
             const receipt3 = await txApprove.wait();
             console.log("receipt3: ", receipt3);
@@ -157,6 +147,7 @@ export function SafeFarmer({ address, signer }) {
             console.log("userBalance: ", userBalance);
             // !!!!! Step 3.3: deposit ALL am3CRV user's tokens !!!!!
             if (receipt3) {
+              // Example Deposit: 0xedce5ab556e3c8d0c934789f27db337720ec3fd4a2d2e066bebb363ac25416fa
               const depositRes = await curveDepositContract["deposit(uint256)"](userBalance);
               console.log("rise curveContract.deposit res: ", depositRes);
             }
@@ -174,6 +165,7 @@ export function SafeFarmer({ address, signer }) {
 
             // !!!!! Step 1 !!!!!
             const normAmount = amount.mul(1000000000000).mul(99).div(100);
+            // Example 0x67595b3157c05b70666e77340ebe27b8f08ea9335b42f8be60d8bb42f3ff4fe3
             const tx1 = await curveDepositContract["withdraw(uint256)"](normAmount);
             const receipt1 = await tx1.wait();
             console.log("receipt1: ", receipt1);
@@ -188,6 +180,7 @@ export function SafeFarmer({ address, signer }) {
               userBalance,
               useUnderlying,
             });
+            // Example 0x384f0b8026c5fce0372ffd9fb8d6eaf51d3f5373344b2db49f6cefd6c1eddc48
             const tx2 = await curveContract["remove_liquidity_imbalance(uint256[3],uint256,bool)"](
               amounts,
               userBalance,
@@ -216,9 +209,7 @@ export function SafeFarmer({ address, signer }) {
   return (
     <Row justify="center">
       <Col>
-        {/* <Row>
-          <ConvertingForm />
-        </Row> */}
+        <Divider />
 
         <Row gutter={4}>
           <Typography level={3}>SafeCDPFarmer</Typography>
@@ -229,7 +220,7 @@ export function SafeFarmer({ address, signer }) {
 
         <Divider />
 
-        <Row gutter={4}>
+        {/* <Row gutter={4}>
           <Typography strong>
             totalCollateralETH: {userAave ? ethers.utils.formatUnits(userAave.totalCollateralETH) : "loading..."}
             <i> total collateral in ETH of the user</i>
@@ -265,9 +256,9 @@ export function SafeFarmer({ address, signer }) {
             healthFactor: {userAave ? ethers.utils.formatUnits(userAave.healthFactor) : "loading..."}
             <i> current health factor of the user. Also see liquidationCall()</i>
           </Typography>
-        </Row>
+        </Row> */}
 
-        <Divider />
+        {/* <Divider /> */}
 
         <Row gutter={4}>
           <Typography strong>Target Health Factor: 1.8</Typography>
