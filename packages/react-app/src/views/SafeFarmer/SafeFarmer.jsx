@@ -7,26 +7,55 @@ import {
   AaveProxyABI,
   PriceOracleABI,
   PriceOracleAddress,
-  ProtocolDataProviderABI,
-  ProtocolDataProviderAddress,
   USDTAddress,
   TARGET_HF,
   MATIC_LT,
+  CurveAddress,
+  CurveAbi,
+  am3CrvContractAddress,
+  am3CrvContractAbi,
+  CurveDepositAddress,
+  CurveDepositAbi,
 } from "./consts";
 
-// TODO add link for Explorer
-// TODO добавить прослушку Event чтобы обновлять фронт
+const RATE_MODE = ethers.BigNumber.from(2);
+const UNDERLYING = ethers.BigNumber.from(1);
+
+/* TODO Делать deposit matic перед borrow:
+ *   0) Если borrow еще нет, то нужно получить апрув на его создание (или на хуйню с ERC20 tokens)
+ *   Транза с апрувом: 0xd05500fc454f551685c303e7f1b027b9f2d3b4fc316ef3427959089d7cf24724
+ *   1) если депозит в матик пуст, то закинуть матик
+ *   2) если депозит в матик пуст, а мы withdraw-нули usdt/usdc/dai, то обменять их на matic
+ *   или закинуть usdt/usdc/dai в deposit (этот вариант проще)
+ *   Пока сделать с рассчетом на то, что депозит уже есть
+ * */
+// TODO show steps and their states + tx links
+// TODO update front after each success functions
+// TODO handle all errors and scenarios
+// TODO [optional] getData before tx? (If user use aave or curve just right now and want tested out interface)
+// TODO награды забирать отдельно
+// TODO научить сервис определять какая транза отвалилась, чтобы начать с этого места
 export function SafeFarmer({ address, signer }) {
   const [userAave, setUserAave] = React.useState();
+  const [usdtEth, setUsdtEth] = React.useState(); //
   const aaveProxyContract = React.useMemo(() => {
     return new ethers.Contract(AaveAddress, AaveProxyABI, signer);
   }, [signer]);
   const aaveOracleContract = React.useMemo(() => {
     return new ethers.Contract(PriceOracleAddress, PriceOracleABI, signer);
   }, [signer]);
-  const ProtocolDataProviderContract = React.useMemo(() => {
-    return new ethers.Contract(ProtocolDataProviderAddress, ProtocolDataProviderABI, signer);
+  const curveContract = React.useMemo(() => {
+    return new ethers.Contract(CurveAddress, CurveAbi, signer);
   }, [signer]);
+  const curveDepositContract = React.useMemo(() => {
+    return new ethers.Contract(CurveDepositAddress, CurveDepositAbi, signer);
+  }, [signer]);
+  const am3CrvContract = React.useMemo(() => {
+    return new ethers.Contract(am3CrvContractAddress, am3CrvContractAbi, signer);
+  });
+  // const ProtocolDataProviderContract = React.useMemo(() => {
+  //   return new ethers.Contract(ProtocolDataProviderAddress, ProtocolDataProviderABI, signer);
+  // }, [signer]);
   // console.log("logs aaveOracleContract: ", aaveOracleContract);
   React.useEffect(() => {
     async function getUserAccountData() {
@@ -42,95 +71,24 @@ export function SafeFarmer({ address, signer }) {
         }
       }
     }
-    if (aaveProxyContract && signer && address) {
-      getUserAccountData();
-    }
-  }, [aaveProxyContract, signer, address]);
-  const rebalanceModule = React.useMemo(() => {
-    async function rebalance(targetBorrowAmount) {
-      // https://docs.aave.com/developers/the-core-protocol/lendingpool#borrow
-      // function borrow(address asset, uint256 amount, uint256 interestRateMode, uint16 referralCode, address onBehalfOf)
-      // const asset = wMaticAddress; // [address] address of the underlying asset
-      const asset = USDTAddress; // vUSDTAddress; // [address] address of the underlying asset
-      // const forBigNumber = ethers.utils.formatUnits(targetBorrowAmount);
-      // console.log("forBigNumber: ", forBigNumber);
-
-      console.log("logs ProtocolDataProviderContract: ", ProtocolDataProviderContract);
-      const allTokens = await ProtocolDataProviderContract.getAllReservesTokens(); // getAllATokens();
-      console.log("logs reserves allTokens: ", allTokens);
-
-      let usdtEth = 0;
-      const asd = await aaveOracleContract.getAssetPrice(asset);
-      console.log("logs asd: ", asd);
+    async function getUsdtEthPair() {
       try {
-        usdtEth = await aaveOracleContract.getAssetPrice(asset);
+        const usdtEthPair = await aaveOracleContract.getAssetPrice(USDTAddress);
+        setUsdtEth(usdtEthPair.toNumber());
       } catch (err) {
         console.log("logs aaveOracleContract.getAssetPrice(asset): ", err);
       }
-
-      console.log("logs usdtEth: ", usdtEth, ethers.utils.formatUnits(usdtEth));
-      // const amount = ethers.BigNumber.from(ethers.utils.formatUnits(targetBorrowAmount)); // [uint256]
-      const amount = ethers.BigNumber.from(targetBorrowAmount); // [uint256]
-      console.log("logs targetBorrowAmount: ", targetBorrowAmount);
-      console.log("logs targetBorrowAmount / 1,000,000: ", targetBorrowAmount / 1000000);
-      console.log("logs amount: ", amount);
-      console.log("logs tba: ", targetBorrowAmount);
-      console.log(
-        "logs amount from.format32",
-        ethers.BigNumber.from(ethers.utils.formatBytes32String(String(targetBorrowAmount))),
-      );
-      console.log(
-        "logs formatBytes32String(targetBorrowAmount): ",
-        ethers.utils.formatBytes32String(String(targetBorrowAmount)),
-      );
-      // console.log(
-      //   "logs ethers.BigNumber.from(ethers.utils.formatUnits(targetBorrowAmount)): ",
-      //   ethers.BigNumber.from(ethers.utils.formatUnits(targetBorrowAmount)),
-      // );
-      const toNumberAmount = amount.toNumber();
-      console.log("logs toNumberAmount: ", toNumberAmount);
-      // console.log("logs ethers.utils.formatUnits(targetBorrowAmount): ",
-      // ethers.utils.formatUnits(targetBorrowAmount));
-      // console.log(
-      //   "logs ethers.utils.formatUnits(targetBorrowAmount): ",
-      //   ethers.BigNumber.from(ethers.utils.formatUnits(targetBorrowAmount)),
-      // );
-      // amount to be borrowed, expressed in wei
-      // units
-      const interestRateMode = ethers.BigNumber.from(2); // [uint256] the type of borrow debt. Stable: 1, Variable: 2
-      const referralCode = ethers.BigNumber.from(0); // [uint16] referral code for our referral program. Use 0 for
-      // no referral code.
-      console.log("logs onBehalfOf: ", address);
-      const onBehalfOf = address; // [address] address of user who will incur the debt
-      // string public constant VL_RESERVE_FROZEN = '3'; // 'Action cannot be performed because the reserve is frozen'
-      // 3 Currency not borrowed
-      // в комментах примеры транзакции которую я запустил через сайт Aave
-      // https://polygonscan.com/tx/0xd3692972d480a60aa4e321d852ebbcce8de498f978138ee204e6cc7a4896dbbc
-      const borrowData = {
-        asset, // 000000000000000000000000c2132d05d31c914a87c6611c10748aeb04b58e8f
-        // targetBorrowAmount,
-        amount, // 00000000000000000000000000000000000000000000000000000000000f4240
-        interestRateMode, // 0000000000000000000000000000000000000000000000000000000000000002
-        referralCode, // 0000000000000000000000000000000000000000000000000000000000000000
-        onBehalfOf, // 0000000000000000000000004b7e32a9f6e98da4d3194199f5a18d960c12ce63
-      };
-      console.log("logs borrow data: ", borrowData);
-
-      try {
-        const res = await aaveProxyContract.borrow(asset, amount, interestRateMode, referralCode, onBehalfOf);
-        console.log("logs rebalance res: ", res);
-      } catch (err) {
-        console.log("logs rebalance err: ", err);
-      }
     }
-
+    if (aaveProxyContract && signer && address) {
+      getUserAccountData();
+    }
+    if (aaveOracleContract) {
+      getUsdtEthPair();
+    }
+  }, [aaveProxyContract, aaveOracleContract, signer, address]);
+  const rebalanceModule = React.useMemo(() => {
     if (userAave) {
       const currentHF = ethers.utils.formatUnits(userAave.healthFactor);
-      console.log("logs HFS: ", {
-        currentHF,
-        TARGET_HF,
-        numberCHF: Number(currentHF),
-      });
       const isRange = Number(currentHF) >= TARGET_HF - 0.05 && Number(currentHF) <= TARGET_HF + 0.05;
 
       if (isRange)
@@ -143,8 +101,108 @@ export function SafeFarmer({ address, signer }) {
 
       const totalCollateral = userAave.totalCollateralETH;
       const totalDebtETH = userAave.totalDebtETH;
-      const targetBorrowAmount = Math.ceil((totalCollateral * MATIC_LT) / TARGET_HF - totalDebtETH);
-      const isRise = currentHF > TARGET_HF + 0.5;
+      const targetBorrowAmount = Math.floor((totalCollateral * MATIC_LT) / TARGET_HF - totalDebtETH);
+      const isRise = currentHF > TARGET_HF + 0.05;
+      const isFall = currentHF < TARGET_HF - 0.05;
+
+      const rebalance = async () => {
+        if (!aaveProxyContract) return;
+
+        const asset = USDTAddress;
+        const amount = ethers.BigNumber.from(Math.floor((Math.abs(targetBorrowAmount) / usdtEth) * 1000000));
+        const rateMode = RATE_MODE;
+        const referralCode = ethers.BigNumber.from(0);
+        const onBehalfOf = address;
+
+        if (isRise) {
+          try {
+            // !!!!! Step 1: borrow money !!!!!
+            // https://docs.aave.com/developers/the-core-protocol/lendingpool#borrow
+            // const allTokens = await ProtocolDataProviderContract.getAllReservesTokens();
+            // в комментах примеры транзакции которую я сделал с Aave
+            // https://polygonscan.com/tx/0xd3692972d480a60aa4e321d852ebbcce8de498f978138ee204e6cc7a4896dbbc
+            const txBorrow = await aaveProxyContract.borrow(asset, amount, rateMode, referralCode, onBehalfOf);
+            const receipt1 = await txBorrow.wait();
+            console.log("logs receipt1: ", receipt1);
+            if (!receipt1) return;
+
+            // !!!!! Step 2: deposits coins into to the pool and mints new LP tokens !!!!!
+            // Example deposit 10 USDT
+            // Add_liquidity: 0x1745e4e14970cff6b84c240a5aa8258bbe7e6c58c5237c44cd318861054c72ec
+            // Approve am3CRV spend limit: 0xb104512d92e089868522495bb151aab0483bd32b6d4db8477208d145ae5628ba
+            // Deposit: 0xedce5ab556e3c8d0c934789f27db337720ec3fd4a2d2e066bebb363ac25416fa
+            // закидываем бабки в Curve
+            const amounts = [ethers.BigNumber.from(0), ethers.BigNumber.from(0), amount];
+            const cta = await curveContract.calc_token_amount(amounts, true);
+            const minMintAmount = cta.mul(99).div(100); // ethers.BigNumber.from(Math.floor(amount.toNumber() * 0.99));
+            const useUnderlying = UNDERLYING;
+            // Note that if you wish to add or remove liqudity using the underlying assets within the base pool, you must use a depositor contract.
+            // Returns the amount of LP tokens that were minted in the deposit.
+            // BUT FUCKING ETHERS DOESN'T RETURN RESPONSE OF TRANSACTION
+            // mb trying events
+            const txAddLiq = await curveContract["add_liquidity(uint256[3],uint256,bool)"](
+              amounts,
+              minMintAmount,
+              useUnderlying,
+            );
+            const receipt2 = await txAddLiq.wait();
+            console.log("receipt2: ", receipt2);
+
+            // !!!!! Step 3.1: approve for am3CRV spending 2**256-1 // Number.MAX_SAFE_INTEGER 9007199254740991 !!!!!
+            const txApprove = await am3CrvContract.approve(address, "0xffffffffffffffffffffff");
+            const receipt3 = await txApprove.wait();
+            console.log("receipt3: ", receipt3);
+            // !!!!! Step 3.2: get am3CRV balance of user !!!!!
+            const userBalance = await am3CrvContract.balanceOf(address);
+            console.log("userBalance: ", userBalance);
+            // !!!!! Step 3.3: deposit ALL am3CRV user's tokens !!!!!
+            if (receipt3) {
+              const depositRes = await curveDepositContract["deposit(uint256)"](userBalance);
+              console.log("rise curveContract.deposit res: ", depositRes);
+            }
+          } catch (err) {
+            console.log("logs rebalance err: ", err);
+          }
+        }
+
+        if (isFall) {
+          try {
+            // Withdraw from CurveDepositContract: https://polygonscan.com/tx/0xa35ccdb98eb4c25bc467b4f8d401665f309b958d54351e4435e0c09b34313fae
+            // TODO иногда withdraw (step 2) пропускается и сразу дергается removeLiq (step 3) на сайте курвы
+            // Remove_liquidity_imbalance from CurveContract: https://polygonscan.com/tx/0x4b7b687f1a0e52edac38b91639949005603ede586c208307b5208399be3c3817
+            // Check user balance on curve before withdraw???
+
+            // !!!!! Step 1 !!!!!
+            const normAmount = amount.mul(1000000000000).mul(99).div(100);
+            const tx1 = await curveDepositContract["withdraw(uint256)"](normAmount);
+            const receipt1 = await tx1.wait();
+            console.log("receipt1: ", receipt1);
+
+            // !!!!! Step 2 !!!!!
+            const amounts = [ethers.BigNumber.from(0), ethers.BigNumber.from(0), amount];
+            const useUnderlying = UNDERLYING;
+            const userBalance = await am3CrvContract.balanceOf(address);
+            console.log("userBalance: ", userBalance);
+            console.log("removeLiq DATA: ", {
+              amounts,
+              userBalance,
+              useUnderlying,
+            });
+            const tx2 = await curveContract["remove_liquidity_imbalance(uint256[3],uint256,bool)"](
+              amounts,
+              userBalance,
+              useUnderlying,
+            );
+            const receipt2 = await tx2.wait();
+            console.log("receipt2: ", receipt2);
+
+            const res = await aaveProxyContract.repay(asset, amount, rateMode, onBehalfOf);
+            console.log("logs repay res: ", res);
+          } catch (err) {
+            console.log("logs repay err: ", err);
+          }
+        }
+      };
 
       return {
         rebalance,
@@ -153,18 +211,14 @@ export function SafeFarmer({ address, signer }) {
         currentHF,
       };
     }
-  }, [userAave, address]);
+  }, [userAave, address, aaveOracleContract, aaveProxyContract, curveContract, curveDepositContract, usdtEth]);
 
   return (
     <Row justify="center">
       <Col>
-        <Divider />
-
-        <Row>
+        {/* <Row>
           <ConvertingForm />
-        </Row>
-
-        <Divider />
+        </Row> */}
 
         <Row gutter={4}>
           <Typography level={3}>SafeCDPFarmer</Typography>
@@ -229,7 +283,7 @@ export function SafeFarmer({ address, signer }) {
               : "Need withdraw money on Curve and repay on Aave: "}
             {userAave
               ? typeof rebalanceModule.targetBorrowAmount !== "string"
-                ? ethers.utils.formatUnits(rebalanceModule.targetBorrowAmount)
+                ? ethers.utils.formatUnits(rebalanceModule.targetBorrowAmount) + " eth"
                 : rebalanceModule.targetBorrowAmount
               : "loading..."}
           </Typography>
@@ -239,9 +293,11 @@ export function SafeFarmer({ address, signer }) {
 
         {userAave && (
           <Row gutter={4}>
-            <Button onClick={() => rebalanceModule.rebalance(rebalanceModule.targetBorrowAmount)}>Rebalance</Button>
+            <Button onClick={rebalanceModule.rebalance}>Rebalance</Button>
           </Row>
         )}
+
+        <Divider />
       </Col>
     </Row>
   );
